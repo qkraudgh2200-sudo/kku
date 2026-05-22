@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>건국대학교(글로컬) 재물조사 시스템</title>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script src="https://unpkg.com/@zxing/library@latest/umd/index.min.js"></script>
+<style>
+  :root {
+    --bg: #f5f4f0; --surface: #ffffff; --border: #e2e0d8;
+    --text: #1a1916; --text2: #6b6960; --text3: #a8a69e;
+    --accent: #2a7a4b; --accent-light: #e6f4ec;
+    --success: #1a6b3a; --success-light: #e6f4ec;
+    --danger: #8a2c2c; --danger-light: #f7e8e8;
+    --warning: #7a5c1a; --warning-light: #fdf3e0;
+    --radius: 10px; --radius-sm: 6px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Apple SD Gothic Neo','Malgun Gothic',sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; font-size: 14px; }
+
+  /* 로그인 */
+  #login-screen { display:flex; align-items:center; justify-content:center; min-height:100vh; padding:1rem; }
+  .login-box { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:2.5rem 2rem; width:100%; max-width:380px; }
+  .login-title { font-size:20px; font-weight:700; margin-bottom:6px; }
+  .login-sub { font-size:13px; color:var(--text2); margin-bottom:1.5rem; }
+  .role-select { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:1.2rem; }
+  .role-btn { padding:12px; border:1.5px solid var(--border); border-radius:var(--radius); background:var(--surface); cursor:pointer; text-align:center; font-size:13px; color:var(--text2); transition:all .15s; }
+  .role-btn.active { border-color:var(--accent); background:var(--accent-light); color:var(--accent); font-weight:600; }
+  .role-icon { font-size:22px; display:block; margin-bottom:4px; }
+  .field { margin-bottom:12px; }
+  .field label { display:block; font-size:12px; color:var(--text2); margin-bottom:4px; font-weight:500; }
+  .field input { width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:var(--radius-sm); font-size:14px; outline:none; transition:border .15s; }
+  .field input:focus { border-color:var(--accent); }
+  .field input[type=password] { letter-spacing:2px; }
+  .btn-full { width:100%; padding:12px; background:var(--accent); color:#fff; border:none; border-radius:var(--radius); font-size:15px; font-weight:600; cursor:pointer; }
+  .btn-full:hover { opacity:.88; }
+  #login-err { margin-top:10px; font-size:12px; color:var(--danger); text-align:center; display:none; }
+  #admin-fields, #surveyor-fields { display:none; }
+
+  /* 앱 */
+  #app { display:none; min-height:100vh; }
+  .topbar { background:var(--surface); border-bottom:1px solid var(--border); padding:12px 16px; display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:100; }
+  .app-title { font-size:15px; font-weight:700; }
+  .user-badge { font-size:12px; padding:3px 10px; border-radius:20px; background:var(--accent-light); color:var(--accent); font-weight:600; }
+  .logout-btn { font-size:12px; color:var(--text3); cursor:pointer; padding:4px 8px; border:1px solid var(--border); border-radius:var(--radius-sm); background:none; }
+
+  /* 탭 */
+  .tab-bar { background:var(--surface); border-bottom:1px solid var(--border); display:flex; overflow-x:auto; }
+  .tab { padding:12px 18px; font-size:13px; font-weight:500; cursor:pointer; border:none; background:none; color:var(--text2); white-space:nowrap; border-bottom:2px solid transparent; }
+  .tab.active { color:var(--accent); border-bottom-color:var(--accent); }
+  .screen { display:none; padding:16px; max-width:720px; margin:0 auto; }
+  .screen.active { display:block; }
+
+  /* 카드 */
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:16px; margin-bottom:12px; }
+  .card-title { font-size:14px; font-weight:600; margin-bottom:12px; display:flex; align-items:center; gap:6px; }
+
+  /* 통계 */
+  .stat-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-bottom:12px; }
+  .stat { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:14px 12px; text-align:center; }
+  .stat-num { font-size:26px; font-weight:700; }
+  .stat-lbl { font-size:11px; color:var(--text2); margin-top:2px; }
+
+  /* 진행바 */
+  .prog-wrap { background:var(--bg); border-radius:20px; height:8px; overflow:hidden; }
+  .prog-bar { height:8px; border-radius:20px; background:var(--success); transition:width .5s; }
+
+  /* 배지 */
+  .badge { display:inline-block; padding:3px 9px; border-radius:20px; font-size:11px; font-weight:600; }
+  .badge-ok { background:var(--success-light); color:var(--success); }
+  .badge-no { background:var(--bg); color:var(--text2); border:1px solid var(--border); }
+
+  /* 자산 행 */
+  .asset-item { display:flex; align-items:center; gap:10px; padding:11px 0; border-bottom:1px solid var(--border); }
+  .asset-item:last-child { border-bottom:none; }
+  .asset-check { font-size:20px; flex-shrink:0; }
+  .asset-info { flex:1; min-width:0; }
+  .asset-id { font-size:12px; color:var(--text2); }
+  .asset-name { font-size:14px; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .asset-loc { font-size:11px; color:var(--text3); }
+
+  /* QR */
+  .qr-area { border:2px dashed var(--border); border-radius:var(--radius); padding:28px 16px; text-align:center; cursor:pointer; transition:all .15s; margin-bottom:12px; }
+  .qr-area:hover { border-color:var(--accent); background:var(--accent-light); }
+  .qr-icon { font-size:52px; margin-bottom:8px; }
+  .qr-title { font-size:15px; font-weight:600; margin-bottom:4px; }
+  .qr-hint { font-size:12px; color:var(--text2); }
+
+  /* 알림 */
+  .alert { padding:12px 14px; border-radius:var(--radius-sm); margin-bottom:12px; font-size:13px; display:none; }
+  .alert-ok { background:var(--success-light); color:var(--success); border:1px solid #b8dfc9; }
+  .alert-fail { background:var(--danger-light); color:var(--danger); border:1px solid #dfc8c8; }
+  .alert-warn { background:var(--warning-light); color:var(--warning); border:1px solid #e8d9aa; }
+
+  /* 입력 */
+  .row { display:flex; gap:8px; margin-bottom:8px; align-items:center; }
+  .row label { font-size:12px; color:var(--text2); min-width:58px; font-weight:500; }
+  .row input, .row select { flex:1; padding:9px 10px; border:1px solid var(--border); border-radius:var(--radius-sm); font-size:13px; outline:none; background:var(--surface); }
+  .row input:focus, .row select:focus { border-color:var(--accent); }
+  .btn { padding:8px 16px; border-radius:var(--radius-sm); font-size:13px; font-weight:500; cursor:pointer; border:none; }
+  .btn-primary { background:var(--accent); color:#fff; }
+  .btn-outline { background:none; border:1px solid var(--border); color:var(--text); }
+  .btn-danger { background:none; border:1px solid #dfc8c8; color:var(--danger); font-size:12px; padding:5px 10px; }
+  .flex-end { display:flex; justify-content:flex-end; gap:8px; margin-top:10px; }
+
+  /* 부서 리스트 (조사원용 - 가나다순 목록) */
+  .dept-list-item { display:flex; align-items:center; padding:14px 16px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); margin-bottom:8px; cursor:pointer; transition:all .15s; gap:12px; }
+  .dept-list-item:hover { border-color:var(--accent); background:var(--accent-light); }
+  .dept-list-name { flex:1; font-size:15px; font-weight:600; }
+  .dept-list-stat { font-size:12px; color:var(--text2); text-align:right; }
+  .dept-list-pct { font-size:13px; font-weight:700; color:var(--accent); }
+
+  /* 부서 그리드 (관리자용) */
+  .dept-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:8px; }
+  .dept-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:14px 12px; cursor:pointer; text-align:center; }
+  .dept-card:hover { border-color:var(--accent); background:var(--accent-light); }
+
+  .back-btn { display:flex; align-items:center; gap:4px; font-size:13px; color:var(--text2); cursor:pointer; background:none; border:none; margin-bottom:12px; padding:0; }
+  .back-btn:hover { color:var(--text); }
+
+  /* 검색 */
+  .search-wrap { position:relative; margin-bottom:12px; }
+  .search-wrap input { width:100%; padding:10px 12px 10px 36px; border:1px solid var(--border); border-radius:var(--radius-sm); font-size:13px; outline:none; }
+  .search-wrap input:focus { border-color:var(--accent); }
+  .search-icon { position:absolute; left:11px; top:50%; transform:translateY(-50%); color:var(--text3); }
+
+  /* 로그 */
+  .log-item { padding:10px 0; border-bottom:1px solid var(--border); }
+  .log-item:last-child { border-bottom:none; }
+  .log-name { font-size:13px; font-weight:500; }
+  .log-meta { font-size:11px; color:var(--text3); margin-top:2px; }
+
+  /* 태그 */
+  .tag-list { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+  .tag { display:inline-flex; align-items:center; gap:4px; padding:4px 10px; background:var(--accent-light); color:var(--accent); border-radius:20px; font-size:12px; font-weight:500; }
+  .tag-x { cursor:pointer; opacity:.6; font-size:14px; line-height:1; }
+
+  /* 업로드 */
+  .upload-box { border:2px dashed var(--border); border-radius:var(--radius); padding:20px; text-align:center; cursor:pointer; margin-bottom:10px; }
+  .upload-box:hover { border-color:var(--accent); background:var(--accent-light); }
+  .upload-icon { font-size:28px; margin-bottom:6px; }
+  .section-label { font-size:11px; font-weight:600; color:var(--text3); text-transform:uppercase; letter-spacing:.06em; margin:14px 0 8px; }
+  .empty { text-align:center; padding:28px; color:var(--text3); font-size:13px; }
+  .badge-dept { background:var(--accent-light); color:var(--accent); }
+  .badge-university { background:#e8f0f7; color:#2c5f8a; } /* 대학회계 - 파란색 */
+  .badge-santan { background:#e6f4ec; color:#1a6b3a; } /* 산단회계 - 초록색 */ border-radius:50%; background:var(--success); display:inline-block; margin-right:4px; animation:pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+  @media (max-width:480px) {
+    .stat-num { font-size:20px; }
+  }
+</style>
+</head>
+<body>
+
+<!-- 로그인 -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-title">📋 건국대학교(글로컬) 재물조사 시스템</div>
+    <div class="login-sub">역할을 선택해주세요</div>
+    <div class="role-select">
+      <button class="role-btn active" onclick="selectRole('admin',this)">
+        <span class="role-icon">🛠️</span>관리자
+      </button>
+      <button class="role-btn" onclick="selectRole('surveyor',this)">
+        <span class="role-icon">🔍</span>조사원
+      </button>
+    </div>
+
+    <!-- 관리자 필드 -->
+    <div id="admin-fields">
+      <div class="field">
+        <label>관리자 비밀번호</label>
+        <input id="admin-pw" type="password" placeholder="비밀번호 입력" onkeydown="if(event.key==='Enter')login()">
+      </div>
+    </div>
+
+    <!-- 조사원 필드 -->
+    <div id="surveyor-fields">
+      <div class="field">
+        <label>이름</label>
+        <input id="sv-name" type="text" placeholder="예: 홍길동" maxlength="20" onkeydown="if(event.key==='Enter')login()">
+      </div>
+      <div class="field">
+        <label>소속</label>
+        <input id="sv-dept-input" type="text" placeholder="예: 기획예산팀" maxlength="30" onkeydown="if(event.key==='Enter')login()">
+      </div>
+    </div>
+
+    <button class="btn-full" onclick="login()">시작하기</button>
+    <div id="login-err"></div>
+  </div>
+</div>
+
+<!-- 메인 앱 -->
+<div id="app">
+  <div class="topbar">
+    <div style="display:flex;align-items:center;gap:10px">
+      <div class="app-title">📋 재물조사</div>
+      <span class="user-badge" id="user-badge"></span>
+    </div>
+    <button class="logout-btn" onclick="logout()">로그아웃</button>
+  </div>
+
+  <!-- 관리자 탭 -->
+  <div id="admin-tabs" class="tab-bar" style="display:none">
+    <button class="tab active" onclick="switchTab('admin','log')">조사 현황</button>
+    <button class="tab" onclick="switchTab('admin','dept')">부서 관리</button>
+    <button class="tab" onclick="switchTab('admin','asset')">자산 관리</button>
+    <button class="tab" onclick="switchTab('admin','adminrequest')">변경신청 관리</button>
+  </div>
+
+  <!-- 조사원 탭 -->
+  <div id="surveyor-tabs" class="tab-bar" style="display:none">
+    <button class="tab active" onclick="switchTab('surveyor','svdept')">부서별 조사현황</button>
+    <button class="tab" onclick="switchTab('surveyor','svlog')">내 조사 기록</button>
+    <button class="tab" onclick="switchTab('surveyor','svrequest')">정보변경신청</button>
+  </div>
+
+  <!-- 관리자: 변경신청 관리 -->
+  <div id="screen-adminrequest" class="screen">
+    <div class="card">
+      <div class="card-title">📝 장소 변경신청 목록</div>
+      <div class="row" style="margin-bottom:12px">
+        <label>상태 필터</label>
+        <select id="req-status-filter" onchange="loadAdminRequests()">
+          <option value="">전체</option>
+          <option value="대기중">대기중</option>
+          <option value="승인">승인</option>
+          <option value="거절">거절</option>
+        </select>
+      </div>
+      <div id="admin-request-list"></div>
+    </div>
+  </div>
+  <div id="screen-dept" class="screen">
+    <div class="card">
+      <div class="card-title">🏢 부서 추가</div>
+      <div class="row">
+        <input id="new-dept-input" placeholder="새 부서명 입력" style="flex:1;padding:9px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;outline:none;">
+        <button class="btn btn-primary" onclick="addDept()">추가</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">📊 부서별 조사 현황</div>
+      <div id="dept-summary"></div>
+    </div>
+  </div>
+
+  <!-- 관리자: 자산 관리 -->
+  <div id="screen-asset" class="screen">
+    <div class="card">
+      <div class="card-title">📤 자산 업로드</div>
+      <div class="row"><label>부서 선택</label><select id="upload-dept-sel"></select></div>
+      <div class="upload-box" onclick="document.getElementById('csv-file').click()">
+        <div class="upload-icon">📄</div>
+        <div style="font-size:13px;font-weight:500;margin-bottom:4px">CSV 파일 업로드</div>
+        <div style="font-size:12px;color:var(--text2)">자산번호, 품목명, 위치, 금액, 부서, 등재일자, 등재번호, 회계구분 순서</div>
+      </div>
+      <input type="file" id="csv-file" accept=".csv" style="display:none" onchange="uploadCSV(event)">
+      <div id="upload-result"></div>
+      <div class="section-label">직접 입력</div>
+      <div class="row"><label>자산번호</label><input id="m-id" placeholder="A-12345"></div>
+      <div class="row"><label>품목명</label><input id="m-name" placeholder="노트북"></div>
+      <div class="row"><label>위치</label><input id="m-loc" placeholder="101호"></div>
+      <div class="row"><label>금액</label><input id="m-price" type="number" placeholder="1500000"></div>
+      <div class="row"><label>부서</label><select id="m-dept-sel"></select></div>
+      <div class="row"><label>등재일자</label><input id="m-date" type="date"></div>
+      <div class="row"><label>회계구분</label>
+        <select id="m-account">
+          <option value="대학회계">대학회계</option>
+          <option value="산단회계">산단회계</option>
+        </select>
+      </div>
+      <div class="flex-end"><button class="btn btn-primary" onclick="addAsset()">추가</button></div>
+    </div>
+    <div class="card">
+      <div class="card-title">📋 등록 자산 목록</div>
+      <div class="row"><label>부서 필터</label><select id="asset-filter" onchange="loadAssets()"></select></div>
+      <div class="row"><label>회계구분</label>
+        <select id="asset-acct-filter" onchange="loadAssets()">
+          <option value="">전체</option>
+          <option value="대학회계">대학회계</option>
+          <option value="산단회계">산단회계</option>
+        </select>
+      </div>
+      <div id="asset-list"></div>
+    </div>
+  </div>
+
+  <!-- 관리자: 조사 현황 -->
+  <div id="screen-log" class="screen">
+    <div class="stat-grid" id="report-stats"></div>
+
+    <!-- 회계구분 탭 -->
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+      <button class="btn btn-primary" id="acct-btn-all" onclick="selectAcctType('전체')">전체</button>
+      <button class="btn btn-outline" id="acct-btn-대학회계" onclick="selectAcctType('대학회계')">대학회계</button>
+      <button class="btn btn-outline" id="acct-btn-산단회계" onclick="selectAcctType('산단회계')">산단회계</button>
+    </div>
+
+    <!-- 선택된 회계구분 현황 -->
+    <div id="account-type-stats"></div>
+
+    <!-- 부서 필터 -->
+    <div class="card">
+      <div class="card-title"><span class="live-dot"></span>실시간 조사 로그</div>
+      <div class="row" style="margin-bottom:12px">
+        <label>부서 필터</label>
+        <select id="log-dept-filter" onchange="loadLog()">
+          <option value="">전체 부서</option>
+        </select>
+      </div>
+      <div id="log-list"></div>
+    </div>
+  </div>
+
+  <!-- 조사원: 부서별 조사현황 -->
+  <div id="screen-svdept" class="screen">
+    <!-- 부서 목록 -->
+    <div id="sv-dept-list-wrap">
+      <div class="card" style="margin-bottom:12px">
+        <div class="card-title">📊 부서별 조사현황</div>
+        <div class="search-wrap">
+          <span class="search-icon">🔍</span>
+          <input placeholder="부서명 검색" oninput="filterDeptList(this.value)" id="dept-search-input">
+        </div>
+        <div id="sv-dept-list"></div>
+      </div>
+    </div>
+
+    <!-- 부서 선택 후 상세 -->
+    <div id="sv-dept-detail" style="display:none">
+      <button class="back-btn" onclick="backToDeptList()">← 부서 목록</button>
+
+      <div class="card">
+        <div class="card-title" id="sv-dept-title"></div>
+        <div class="prog-wrap" style="margin-bottom:6px"><div class="prog-bar" id="sv-prog-bar"></div></div>
+        <div id="sv-prog-label" style="font-size:12px;color:var(--text2);margin-bottom:12px"></div>
+
+        <div class="alert alert-ok" id="alert-ok"></div>
+        <div class="alert alert-fail" id="alert-fail"></div>
+        <div class="alert alert-warn" id="alert-warn"></div>
+
+        <div id="qr-start-area" class="qr-area" onclick="startScan()">
+          <div class="qr-icon">📷</div>
+          <div class="qr-title">QR 코드 스캔 시작</div>
+          <div class="qr-hint">탭하면 카메라가 열립니다</div>
+        </div>
+        <div id="qr-scanner-wrap" style="display:none">
+          <video id="qr-video" style="width:100%;border-radius:var(--radius);background:#000;max-height:280px;object-fit:cover"></video>
+          <div style="text-align:center;margin-top:10px">
+            <button class="btn btn-outline" onclick="stopScan()">스캔 중지</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">물품 목록</div>
+        <div class="search-wrap">
+          <span class="search-icon">🔍</span>
+          <input placeholder="품목명 또는 자산번호 검색" oninput="renderSvList(this.value)">
+        </div>
+        <div id="sv-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 조사원: 정보변경신청 -->
+  <div id="screen-svrequest" class="screen">
+    <div class="card">
+      <div class="card-title">📝 장소 변경 신청</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:12px">내가 스캔한 목록에서 장소 변경이 필요한 자산을 선택해주세요</div>
+      <div class="row"><label>자산 선택</label>
+        <select id="req-asset-sel" onchange="fillReqInfo()" style="flex:1;padding:9px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;outline:none;">
+          <option value="">-- 자산 선택 --</option>
+        </select>
+      </div>
+      <div id="req-asset-info" style="display:none;background:var(--bg);border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:12px;font-size:13px">
+        <div id="req-info-name" style="font-weight:500;margin-bottom:4px"></div>
+        <div id="req-info-detail" style="color:var(--text2)"></div>
+      </div>
+      <div class="row"><label>현재 장소</label>
+        <input id="req-old-loc" readonly style="flex:1;padding:9px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;background:var(--bg);color:var(--text2)">
+      </div>
+      <div class="row"><label>변경 장소</label>
+        <input id="req-new-loc" placeholder="변경할 장소 입력 (예: 203호)" style="flex:1;padding:9px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;outline:none;">
+      </div>
+      <div class="row"><label>비고</label>
+        <input id="req-note" placeholder="추가 설명 (선택)" style="flex:1;padding:9px 10px;border:1px solid var(--border);border-radius:var(--radius-sm);font-size:13px;outline:none;">
+      </div>
+      <div class="flex-end"><button class="btn btn-primary" onclick="submitRequest()">신청하기</button></div>
+      <div id="req-result" style="margin-top:10px"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">📋 내 신청 내역</div>
+      <div id="my-request-list"></div>
+    </div>
+  </div>
+  <div id="screen-svlog" class="screen">
+    <div class="stat-grid" id="sv-my-stats"></div>
+    <div class="card">
+      <div class="card-title">내가 스캔한 목록</div>
+      <div id="sv-my-log"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://guhecafpwakaamanholw.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imd1aGVjYWZwd2FrYWFtYW5ob2x3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkzMzg1ODMsImV4cCI6MjA5NDkxNDU4M30.rGANFCfg5s9w7Eo2V3s0-KKQewei_rvuHD5qlXeDh84';
+const ADMIN_PASSWORD = '3856!'; // ← 여기서 비밀번호 변경
+const { createClient } = supabase;
+const db = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+let currentUser = null;
+let currentRole = 'admin';
+let currentDept = null;
+let realtimeSub = null;
+let allDeptData = []; // 부서 목록 캐시
+
+// ── 로그인 ──────────────────────────────────────
+function selectRole(role, btn) {
+  currentRole = role;
+  document.querySelectorAll('.role-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('admin-fields').style.display = role === 'admin' ? 'block' : 'none';
+  document.getElementById('surveyor-fields').style.display = role === 'surveyor' ? 'block' : 'none';
+  document.getElementById('admin-pw').value = '';
+  document.getElementById('sv-name').value = '';
+  document.getElementById('sv-dept-input').value = '';
+}
+
+function login() {
+  const errEl = document.getElementById('login-err');
+  errEl.style.display = 'none';
+
+  if (currentRole === 'admin') {
+    const pw = document.getElementById('admin-pw').value;
+    if (pw !== ADMIN_PASSWORD) {
+      errEl.textContent = '비밀번호가 올바르지 않습니다';
+      errEl.style.display = 'block';
+      return;
+    }
+    currentUser = { name: '관리자', role: 'admin' };
+  } else {
+    const name = document.getElementById('sv-name').value.trim();
+    const dept = document.getElementById('sv-dept-input').value.trim();
+    if (!name) { errEl.textContent = '이름을 입력해주세요'; errEl.style.display = 'block'; return; }
+    if (!dept) { errEl.textContent = '소속을 입력해주세요'; errEl.style.display = 'block'; return; }
+    currentUser = { name, affiliation: dept, role: 'surveyor' };
+  }
+
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  document.getElementById('user-badge').textContent = currentRole === 'admin'
+    ? '관리자'
+    : `${currentUser.name} · ${currentUser.affiliation}`;
+
+  // 모든 screen 숨기기
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+
+  if (currentRole === 'admin') {
+    document.getElementById('admin-tabs').style.display = 'flex';
+    switchTab('admin', 'log');
+  } else {
+    document.getElementById('surveyor-tabs').style.display = 'flex';
+    switchTab('surveyor', 'svdept');
+  }
+  startRealtime();
+}
+
+function logout() {
+  if (realtimeSub) db.removeChannel(realtimeSub);
+  stopScan();
+  currentUser = null; currentDept = null; allDeptData = [];
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('admin-tabs').style.display = 'none';
+  document.getElementById('surveyor-tabs').style.display = 'none';
+  // 초기 상태 복원
+  selectRole('admin', document.querySelector('.role-btn'));
+}
+
+// 페이지 로드 시 관리자 필드 표시
+window.onload = () => {
+  document.getElementById('admin-fields').style.display = 'block';
+};
+
+// ── 탭 전환 ─────────────────────────────────────
+function switchTab(role, tab) {
+  const screens = { admin: ['log','dept','asset','adminrequest'], surveyor: ['svdept','svlog','svrequest'] };
+  const tabs = document.querySelectorAll(`#${role}-tabs .tab`);
+  screens[role].forEach((s, i) => {
+    document.getElementById('screen-'+s)?.classList.remove('active');
+    tabs[i]?.classList.remove('active');
+  });
+  const idx = screens[role].indexOf(tab);
+  if (tabs[idx]) tabs[idx].classList.add('active');
+  document.getElementById('screen-'+tab)?.classList.add('active');
+
+  if (tab === 'dept') { loadDepts(); loadDeptSummary(); }
+  if (tab === 'asset') { loadDepts(); loadAssets(); }
+  if (tab === 'log') { loadReport(); loadLog(); }
+  if (tab === 'svdept') { loadSvDeptList(); }
+  if (tab === 'svrequest') { loadMyRequestAssets(); loadMyRequests(); }
+  if (tab === 'adminrequest') { loadAdminRequests(); }
+}
+
+// ── 실시간 구독 ──────────────────────────────────
+function startRealtime() {
+  realtimeSub = db.channel('assets-ch')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'assets' }, () => {
+      if (currentRole === 'admin') {
+        loadDeptSummary(); loadReport(); loadLog();
+        if (document.getElementById('screen-asset')?.classList.contains('active')) loadAssets();
+      } else {
+        if (currentDept) { updateProgress(); renderSvList(''); }
+        loadSvDeptList();
+      }
+    }).subscribe();
+}
+
+// ── 공통: 전체 자산 페이징 조회 ──────────────────
+async function fetchAllAssets(columns = '*', filters = {}) {
+  let all = [], from = 0;
+  while (true) {
+    let q = db.from('assets').select(columns).range(from, from + 999);
+    for (const [k, v] of Object.entries(filters)) q = q.eq(k, v);
+    const { data } = await q;
+    if (!data || !data.length) break;
+    all = all.concat(data);
+    if (data.length < 1000) break;
+    from += 1000;
+  }
+  return all;
+}
+
+// ── 관리자: 부서 관리 ────────────────────────────
+async function loadDepts() {
+  const { data } = await db.from('departments').select('*').order('name');
+  const depts = data || [];
+  ['upload-dept-sel','asset-filter','m-dept-sel'].forEach(id => {
+    const sel = document.getElementById(id); if (!sel) return;
+    const cur = sel.value;
+    sel.innerHTML = (id === 'asset-filter' ? '<option value="">전체 부서</option>' : '') + depts.map(d => `<option>${d.name}</option>`).join('');
+    sel.value = cur;
+  });
+}
+
+async function addDept() {
+  const inp = document.getElementById('new-dept-input');
+  const name = inp.value.trim(); if (!name) return;
+  await db.from('departments').insert({ name });
+  inp.value = ''; loadDepts();
+}
+
+async function removeDept(id, name) {
+  if (!confirm(`'${name}' 부서를 삭제할까요? 소속 자산도 삭제됩니다.`)) return;
+  await db.from('assets').delete().eq('department', name);
+  await db.from('departments').delete().eq('id', id);
+  loadDepts(); loadDeptSummary();
+}
+
+async function loadDeptSummary() {
+  const { data: depts } = await db.from('departments').select('*').order('name');
+  const assets = await fetchAllAssets('department,checked');
+  const el = document.getElementById('dept-summary'); if (!el) return;
+  if (!depts?.length) { el.innerHTML = '<div class="empty">부서가 없습니다</div>'; return; }
+  el.innerHTML = depts.map(d => {
+    const list = assets.filter(a => a.department === d.name);
+    const total = list.length, done = list.filter(a => a.checked).length;
+    const pct = total ? Math.round(done/total*100) : 0;
+    return `<div style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span style="font-size:14px;font-weight:500">${d.name}</span>
+        <span class="badge ${pct===100?'badge-ok':'badge-no'}">${done}/${total} · ${pct}%</span>
+      </div>
+      <div class="prog-wrap"><div class="prog-bar" style="width:${pct}%"></div></div>
+    </div>`;
+  }).join('');
+}
+
+// ── 관리자: 자산 관리 ────────────────────────────
+async function addAsset() {
+  const id = document.getElementById('m-id').value.trim();
+  const name = document.getElementById('m-name').value.trim();
+  if (!id || !name) return alert('자산번호와 품목명을 입력하세요');
+  const { error } = await db.from('assets').insert({
+    asset_id: id, name,
+    location: document.getElementById('m-loc').value.trim(),
+    price: parseInt(document.getElementById('m-price').value) || 0,
+    department: document.getElementById('m-dept-sel').value,
+    registered_at: document.getElementById('m-date').value || null,
+    account_type: document.getElementById('m-account').value || '대학회계',
+    checked: false
+  });
+  if (error) { alert('오류: ' + error.message); return; }
+  ['m-id','m-name','m-loc','m-price','m-date'].forEach(id => document.getElementById(id).value = '');
+  loadAssets();
+}
+
+async function removeAsset(id) {
+  if (!confirm('삭제할까요?')) return;
+  await db.from('assets').delete().eq('id', id);
+  loadAssets();
+}
+
+async function loadAssets() {
+  const deptFilter = document.getElementById('asset-filter')?.value || '';
+  const acctFilter = document.getElementById('asset-acct-filter')?.value || '';
+  let all = [], from = 0;
+  while (true) {
+    let q = db.from('assets').select('*').order('id').range(from, from + 999);
+    if (deptFilter) q = q.eq('department', deptFilter);
+    if (acctFilter) q = q.eq('account_type', acctFilter);
+    const { data } = await q;
+    if (!data || !data.length) break;
+    all = all.concat(data);
+    if (data.length < 1000) break;
+    from += 1000;
+  }
+  const data = all;
+  const el = document.getElementById('asset-list'); if (!el) return;
+  if (!data.length) { el.innerHTML = '<div class="empty">등록된 자산이 없습니다</div>'; return; }
+  el.innerHTML = data.map(a => `
+    <div class="asset-item">
+      <div class="asset-info">
+        <div class="asset-id">${a.asset_id} · ${a.department} ${acctBadge(a.account_type)}</div>
+        <div class="asset-name">${a.name}</div>
+        <div class="asset-loc">${a.location||'-'} · ${a.price?a.price.toLocaleString()+'원':'-'} · ${a.registered_at||'-'}</div>
+      </div>
+      <span class="badge ${a.checked?'badge-ok':'badge-no'}">${a.checked?'완료':'미확인'}</span>
+      <button class="btn btn-danger" onclick="removeAsset(${a.id})">삭제</button>
+    </div>`).join('');
+}
+
+async function uploadCSV(e) {
+  const file = e.target.files[0]; if (!file) return;
+  const defaultDept = document.getElementById('upload-dept-sel').value;
+  const resEl = document.getElementById('upload-result');
+  resEl.innerHTML = '<div style="font-size:13px;color:var(--text2);margin-top:8px">⏳ 업로드 중...</div>';
+  let text = '';
+  try {
+    const buf = await file.arrayBuffer();
+    try { text = new TextDecoder('euc-kr').decode(buf); } catch { text = new TextDecoder('utf-8').decode(buf); }
+    if (text.includes('\uFFFD')) text = new TextDecoder('utf-8').decode(buf);
+  } catch { text = await file.text(); }
+
+  function parseCSVLine(line) {
+    const res = []; let cur = '', inQ = false;
+    for (const ch of line) {
+      if (ch === '"') inQ = !inQ;
+      else if (ch === ',' && !inQ) { res.push(cur.trim()); cur = ''; }
+      else cur += ch;
+    }
+    res.push(cur.trim()); return res;
+  }
+
+  const lines = text.split('\n').filter(l => l.trim());
+  const rows = lines.slice(1).map(line => {
+    const c = parseCSVLine(line);
+    return {
+      asset_id: (c[0]||'').trim(), name: (c[1]||'').trim(),
+      location: (c[2]||'').trim(),
+      price: parseInt((c[3]||'').replace(/[,\s원]/g,'')) || 0,
+      department: (c[4]||'').trim() || defaultDept,
+      registered_at: (c[5]||'').trim().replace(/\./g,'-') || null,
+      registration_no: (c[6]||'').trim() || null,
+      account_type: (c[7]||'').trim() || '대학회계',
+      checked: false
+    };
+  }).filter(r => r.asset_id && r.name);
+
+  // 부서 자동 등록
+  const deptNames = [...new Set(rows.map(r => r.department).filter(Boolean))];
+  const { data: existing } = await db.from('departments').select('name');
+  const existingNames = (existing||[]).map(d => d.name);
+  const newDepts = deptNames.filter(d => !existingNames.includes(d));
+  if (newDepts.length) await db.from('departments').insert(newDepts.map(name => ({ name })));
+
+  let total = 0;
+  for (let i = 0; i < rows.length; i += 500) {
+    const { error } = await db.from('assets').upsert(rows.slice(i, i+500), { onConflict: 'asset_id', ignoreDuplicates: true });
+    if (!error) total += Math.min(500, rows.length - i);
+  }
+  resEl.innerHTML = `<div style="font-size:13px;color:var(--success);margin-top:8px">✅ ${total}개 업로드 완료 · 부서 ${newDepts.length}개 자동 등록</div>`;
+  setTimeout(() => resEl.innerHTML = '', 5000);
+  e.target.value = '';
+  await loadDepts(); loadAssets();
+}
+
+// ── 관리자: 현황 & 로그 ──────────────────────────
+let currentAcctType = '전체';
+
+function acctBadge(type) {
+  const t = type || '대학회계';
+  const cls = t === '산단회계' ? 'badge-santan' : 'badge-university';
+  return `<span class="badge ${cls}" style="font-size:10px">${t}</span>`;
+}
+
+function selectAcctType(type) {
+  currentAcctType = type;
+  ['전체','대학회계','산단회계'].forEach(t => {
+    const btn = document.getElementById('acct-btn-' + t);
+    if (btn) { btn.className = t === type ? 'btn btn-primary' : 'btn btn-outline'; }
+  });
+  loadReport();
+  loadLog();
+}
+
+async function loadReport() {
+  const data = await fetchAllAssets('checked,account_type,department');
+  const total = data.length, done = data.filter(a=>a.checked).length;
+
+  // 전체 통계
+  const el = document.getElementById('report-stats'); if (!el) return;
+  el.innerHTML = `
+    <div class="stat"><div class="stat-num">${total}</div><div class="stat-lbl">전체 자산</div></div>
+    <div class="stat"><div class="stat-num" style="color:var(--success)">${done}</div><div class="stat-lbl">조사 완료</div></div>
+    <div class="stat"><div class="stat-num" style="color:var(--danger)">${total-done}</div><div class="stat-lbl">미확인</div></div>`;
+
+  // 회계구분별 현황
+  const types = ['대학회계','산단회계'];
+  const acctEl = document.getElementById('account-type-stats');
+  if (acctEl) {
+    acctEl.innerHTML = types.map(t => {
+      const list = data.filter(a=>(a.account_type||'대학회계')===t);
+      const tTotal = list.length, tDone = list.filter(a=>a.checked).length;
+      const pct = tTotal ? Math.round(tDone/tTotal*100) : 0;
+      const isSelected = currentAcctType === t;
+      return `<div class="card" style="margin-bottom:10px;${isSelected?'border-color:var(--accent)':''}" onclick="selectAcctType('${t}')" style="cursor:pointer">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <span style="font-size:15px;font-weight:600;cursor:pointer">${t}</span>
+          <span class="badge ${pct===100?'badge-ok':'badge-no'}">${tDone} / ${tTotal} · ${pct}%</span>
+        </div>
+        <div class="prog-wrap"><div class="prog-bar" style="width:${pct}%"></div></div>
+      </div>`;
+    }).join('');
+  }
+
+  // 부서 필터 셀렉트 업데이트
+  const sel = document.getElementById('log-dept-filter'); if (!sel) return;
+  const filtered = currentAcctType === '전체' ? data : data.filter(a=>(a.account_type||'대학회계')===currentAcctType);
+  const depts = [...new Set(filtered.map(a=>a.department).filter(Boolean))].sort();
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">전체 부서</option>' + depts.map(d=>`<option>${d}</option>`).join('');
+  sel.value = depts.includes(cur) ? cur : '';
+}
+
+async function loadLog() {
+  const deptFilter = document.getElementById('log-dept-filter')?.value || '';
+  let q = db.from('assets').select('*').eq('checked', true).order('checked_at', { ascending: false }).limit(100);
+  if (currentAcctType !== '전체') q = q.eq('account_type', currentAcctType);
+  if (deptFilter) q = q.eq('department', deptFilter);
+  const { data } = await q;
+  const el = document.getElementById('log-list'); if (!el) return;
+  if (!data?.length) { el.innerHTML = '<div class="empty">아직 스캔된 자산이 없습니다</div>'; return; }
+  el.innerHTML = data.map(a => `
+    <div class="log-item">
+      <div class="log-name">${a.name} <span style="font-size:12px;color:var(--text2)">[${a.registration_no||a.asset_id}]</span>
+        <span class="badge badge-dept" style="font-size:10px;margin-left:4px">${a.account_type||'대학회계'}</span>
+      </div>
+      <div class="log-meta">${a.department} · ${a.location||'-'} | <strong style="color:var(--accent)">${a.checked_by||'?'}</strong> | ${a.checked_at?new Date(a.checked_at).toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'-'}</div>
+    </div>`).join('');
+}
+
+// ── 조사원: 부서 목록 (가나다순) ─────────────────
+async function loadSvDeptList() {
+  const { data: depts } = await db.from('departments').select('*').order('name');
+  const assets = await fetchAllAssets('department,checked');
+  allDeptData = (depts||[]).map(d => {
+    const list = assets.filter(a => a.department === d.name);
+    const total = list.length, done = list.filter(a=>a.checked).length;
+    const pct = total ? Math.round(done/total*100) : 0;
+    return { ...d, total, done, pct };
+  });
+  renderDeptList('');
+}
+
+function renderDeptList(q) {
+  const el = document.getElementById('sv-dept-list'); if (!el) return;
+  const filtered = q ? allDeptData.filter(d => d.name.includes(q)) : allDeptData;
+  if (!filtered.length) { el.innerHTML = '<div class="empty">부서가 없습니다</div>'; return; }
+  el.innerHTML = filtered.map(d => `
+    <div class="dept-list-item" onclick="selectDept('${d.name}')">
+      <div>
+        <div class="dept-list-name">${d.name}</div>
+        <div class="dept-list-stat">${d.done} / ${d.total} 확인 완료</div>
+      </div>
+      <div style="text-align:right">
+        <div class="dept-list-pct">${d.pct}%</div>
+        <div style="margin-top:4px"><span class="badge ${d.pct===100?'badge-ok':'badge-no'}">${d.pct===100?'완료':'진행중'}</span></div>
+      </div>
+    </div>`).join('');
+}
+
+function filterDeptList(q) {
+  renderDeptList(q);
+}
+
+function selectDept(dept) {
+  currentDept = dept;
+  document.getElementById('sv-dept-list-wrap').style.display = 'none';
+  document.getElementById('sv-dept-detail').style.display = 'block';
+  document.getElementById('sv-dept-title').textContent = dept + ' 재물조사';
+  updateProgress();
+  renderSvList('');
+}
+
+function backToDeptList() {
+  stopScan();
+  currentDept = null;
+  document.getElementById('sv-dept-list-wrap').style.display = 'block';
+  document.getElementById('sv-dept-detail').style.display = 'none';
+  document.getElementById('dept-search-input').value = '';
+  loadSvDeptList();
+}
+
+async function updateProgress() {
+  if (!currentDept) return;
+  const data = await fetchAllAssets('checked', { department: currentDept });
+  const total = data.length, done = data.filter(a=>a.checked).length;
+  const pct = total ? Math.round(done/total*100) : 0;
+  const bar = document.getElementById('sv-prog-bar');
+  const lbl = document.getElementById('sv-prog-label');
+  if (bar) bar.style.width = pct + '%';
+  if (lbl) lbl.textContent = `${done} / ${total} 확인 완료 (${pct}%)`;
+}
+
+async function renderSvList(q) {
+  if (!currentDept) return;
+  const data = await fetchAllAssets('*', { department: currentDept });
+  let list = data;
+  if (q) list = list.filter(a => a.name.includes(q) || a.asset_id.includes(q));
+  const el = document.getElementById('sv-list'); if (!el) return;
+  if (!list.length) { el.innerHTML = '<div class="empty">물품이 없습니다</div>'; return; }
+  el.innerHTML = list.map(a => `
+    <div class="asset-item" style="${a.checked?'opacity:.55':''}">
+      <div class="asset-check">${a.checked?'✅':'⬜'}</div>
+      <div class="asset-info">
+        <div class="asset-id">${a.registration_no || a.asset_id} ${acctBadge(a.account_type)}</div>
+        <div class="asset-name">${a.name}</div>
+        <div class="asset-loc">${a.location||'-'} · ${a.price?a.price.toLocaleString()+'원':'-'}${a.checked_by?' · '+a.checked_by+' 조사':''}</div>
+      </div>
+      <span class="badge ${a.checked?'badge-ok':'badge-no'}">${a.checked?'완료':'미확인'}</span>
+    </div>`).join('');
+}
+
+// ── 조사원: 내 조사 기록 ─────────────────────────
+async function loadMyLog() {
+  if (!currentUser) return;
+  const { data } = await db.from('assets').select('*').eq('checked_by', currentUser.name).order('checked_at', { ascending: false });
+  const el = document.getElementById('sv-my-log'); if (!el) return;
+  const statsEl = document.getElementById('sv-my-stats');
+  if (statsEl) statsEl.innerHTML = `
+    <div class="stat"><div class="stat-num" style="color:var(--success)">${data?.length||0}</div><div class="stat-lbl">내가 조사한 자산</div></div>`;
+  if (!data?.length) { el.innerHTML = '<div class="empty">아직 스캔한 자산이 없습니다</div>'; return; }
+  el.innerHTML = data.map(a => `
+    <div class="log-item">
+      <div class="log-name">${a.name} <span style="font-size:12px;color:var(--text2)">[${a.asset_id}]</span></div>
+      <div class="log-meta">${a.department} · ${a.location||'-'} | ${a.checked_at?new Date(a.checked_at).toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'-'}</div>
+    </div>`).join('');
+}
+
+// ── QR 스캔 ───────────────────────────────────────
+let codeReader = null;
+let scannerStream = null;
+let lastScanned = '', lastScannedTime = 0;
+
+async function startScan() {
+  document.getElementById('qr-start-area').style.display = 'none';
+  document.getElementById('qr-scanner-wrap').style.display = 'block';
+  hideAlerts();
+  try {
+    codeReader = new ZXing.BrowserMultiFormatReader();
+    const video = document.getElementById('qr-video');
+    await codeReader.decodeFromConstraints(
+      { video: { facingMode: 'environment' } },
+      video,
+      (result, err) => {
+        if (result) {
+          const now = Date.now();
+          if (result.text === lastScanned && now - lastScannedTime < 3000) return;
+          lastScanned = result.text;
+          lastScannedTime = now;
+          checkAsset(result.text.trim());
+        }
+      }
+    );
+  } catch(e) {
+    showAlert('fail', '카메라 권한이 필요합니다. 브라우저 설정에서 카메라를 허용해주세요.');
+    stopScan();
+  }
+}
+
+function stopScan() {
+  if (codeReader) { codeReader.reset(); codeReader = null; }
+  const a = document.getElementById('qr-start-area');
+  const b = document.getElementById('qr-scanner-wrap');
+  if (a) a.style.display = 'block';
+  if (b) b.style.display = 'none';
+}
+
+function scanFrame(video) {}
+
+async function checkAsset(assetId) {
+  hideAlerts();
+  const raw = assetId.trim();
+  const noDash = raw.replace(/-/g, '');
+
+  // 1) asset_id 직접 일치
+  let { data: rows } = await db.from('assets').select('*').eq('asset_id', raw);
+
+  // 2) asset_id에서 - 제거 후 비교
+  if (!rows?.length) {
+    const { data: all } = await db.from('assets').select('*').eq('department', currentDept);
+    rows = (all || []).filter(a => a.asset_id.replace(/-/g,'') === noDash);
+  }
+
+  // 3) registration_no로 검색
+  if (!rows?.length) {
+    const { data: r } = await db.from('assets').select('*').eq('registration_no', raw);
+    rows = r || [];
+  }
+
+  if (!rows?.length) { showAlert('fail', `자산번호 ${raw} — 목록에 없는 자산입니다`); return; }
+  const a = rows[0];
+  if (a.department !== currentDept) { showAlert('fail', `${raw} — 이 부서 소속이 아닙니다 (${a.department})`); return; }
+  if (a.checked) { showAlert('warn', `${a.asset_id} [${a.name}] — 이미 확인된 자산입니다`); return; }
+  await db.from('assets').update({ checked: true, checked_by: currentUser.name, checked_at: new Date().toISOString() }).eq('id', a.id);
+  showAlert('ok', `✅ ${a.asset_id} [${a.name}] — 확인 완료!`);
+  updateProgress(); renderSvList('');
+}
+
+// ── 정보변경신청 ──────────────────────────────────
+async function loadMyRequestAssets() {
+  if (!currentUser) return;
+  const { data } = await db.from('assets').select('*').eq('checked_by', currentUser.name).order('name');
+  const sel = document.getElementById('req-asset-sel'); if (!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">-- 자산 선택 --</option>' + (data||[]).map(a =>
+    `<option value="${a.id}" data-name="${a.name}" data-loc="${a.location||''}" data-id="${a.asset_id}" data-dept="${a.department}" data-regno="${a.registration_no||''}">${a.registration_no||a.asset_id} · ${a.name}</option>`
+  ).join('');
+  sel.value = cur;
+}
+
+function fillReqInfo() {
+  const sel = document.getElementById('req-asset-sel');
+  const opt = sel.options[sel.selectedIndex];
+  const infoEl = document.getElementById('req-asset-info');
+  if (!sel.value) { infoEl.style.display='none'; return; }
+  document.getElementById('req-info-name').textContent = opt.dataset.name;
+  document.getElementById('req-info-detail').textContent = `${opt.dataset.dept} · ${opt.dataset.loc||'장소 미입력'}`;
+  document.getElementById('req-old-loc').value = opt.dataset.loc || '';
+  document.getElementById('req-new-loc').value = '';
+  infoEl.style.display = 'block';
+}
+
+async function submitRequest() {
+  const sel = document.getElementById('req-asset-sel');
+  const opt = sel.options[sel.selectedIndex];
+  const newLoc = document.getElementById('req-new-loc').value.trim();
+  const note = document.getElementById('req-note').value.trim();
+  const resEl = document.getElementById('req-result');
+  if (!sel.value) { resEl.innerHTML = '<div style="color:var(--danger);font-size:13px">자산을 선택해주세요</div>'; return; }
+  if (!newLoc) { resEl.innerHTML = '<div style="color:var(--danger);font-size:13px">변경할 장소를 입력해주세요</div>'; return; }
+  const { error } = await db.from('change_requests').insert({
+    asset_id: opt.dataset.id,
+    asset_name: opt.dataset.name,
+    department: opt.dataset.dept,
+    old_location: opt.dataset.loc || '',
+    new_location: newLoc,
+    requested_by: currentUser.name,
+    note: note || null,
+    status: '대기중'
+  });
+  if (error) { resEl.innerHTML = `<div style="color:var(--danger);font-size:13px">오류: ${error.message}</div>`; return; }
+  resEl.innerHTML = '<div style="color:var(--success);font-size:13px">✅ 신청이 완료됐습니다!</div>';
+  setTimeout(() => resEl.innerHTML = '', 3000);
+  sel.value = ''; document.getElementById('req-asset-info').style.display='none';
+  document.getElementById('req-new-loc').value = '';
+  document.getElementById('req-note').value = '';
+  loadMyRequests();
+}
+
+async function loadMyRequests() {
+  if (!currentUser) return;
+  const { data } = await db.from('change_requests').select('*').eq('requested_by', currentUser.name).order('requested_at', { ascending: false });
+  const el = document.getElementById('my-request-list'); if (!el) return;
+  if (!data?.length) { el.innerHTML = '<div class="empty">신청 내역이 없습니다</div>'; return; }
+  el.innerHTML = data.map(r => {
+    const statusColor = r.status==='승인' ? 'badge-ok' : r.status==='거절' ? 'badge-no' : 'badge-university';
+    return `<div class="log-item">
+      <div class="log-name">${r.asset_name} <span style="font-size:12px;color:var(--text2)">[${r.asset_id}]</span>
+        <span class="badge ${statusColor}" style="margin-left:6px">${r.status}</span>
+      </div>
+      <div class="log-meta">${r.department} | ${r.old_location||'-'} → <strong>${r.new_location}</strong>${r.note?' | '+r.note:''}</div>
+      <div class="log-meta">${new Date(r.requested_at).toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}${r.reviewed_by?' | 처리: '+r.reviewed_by:''}</div>
+    </div>`;
+  }).join('');
+}
+
+// ── 관리자: 변경신청 관리 ─────────────────────────
+async function loadAdminRequests() {
+  const statusFilter = document.getElementById('req-status-filter')?.value || '';
+  let q = db.from('change_requests').select('*').order('requested_at', { ascending: false });
+  if (statusFilter) q = q.eq('status', statusFilter);
+  const { data } = await q;
+  const el = document.getElementById('admin-request-list'); if (!el) return;
+  if (!data?.length) { el.innerHTML = '<div class="empty">신청 내역이 없습니다</div>'; return; }
+  el.innerHTML = data.map(r => {
+    const statusColor = r.status==='승인' ? 'badge-ok' : r.status==='거절' ? 'badge-no' : 'badge-university';
+    const isPending = r.status === '대기중';
+    return `<div class="log-item">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px">
+        <div style="flex:1">
+          <div class="log-name">${r.asset_name} <span style="font-size:12px;color:var(--text2)">[${r.asset_id}]</span>
+            <span class="badge ${statusColor}" style="margin-left:6px">${r.status}</span>
+          </div>
+          <div class="log-meta">${r.department} | <strong>${r.old_location||'-'}</strong> → <strong style="color:var(--accent)">${r.new_location}</strong>${r.note?' | '+r.note:''}</div>
+          <div class="log-meta">신청자: <strong>${r.requested_by}</strong> | ${new Date(r.requested_at).toLocaleString('ko-KR',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'})}</div>
+        </div>
+        ${isPending ? `<div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
+          <button class="btn btn-primary" style="font-size:12px;padding:5px 12px" onclick="reviewRequest(${r.id},'승인','${r.asset_id}','${r.new_location}')">승인</button>
+          <button class="btn btn-danger" style="font-size:12px;padding:5px 12px" onclick="reviewRequest(${r.id},'거절','${r.asset_id}','')">거절</button>
+        </div>` : `<div style="font-size:11px;color:var(--text3)">${r.reviewed_by||''}</div>`}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function reviewRequest(id, status, assetId, newLoc) {
+  const { error } = await db.from('change_requests').update({
+    status, reviewed_by: currentUser.name, reviewed_at: new Date().toISOString()
+  }).eq('id', id);
+  if (error) { alert('오류: ' + error.message); return; }
+  // 승인이면 실제 자산 위치도 업데이트
+  if (status === '승인' && newLoc) {
+    await db.from('assets').update({ location: newLoc }).eq('asset_id', assetId);
+  }
+  loadAdminRequests();
+}
+function hideAlerts() {
+  ['alert-ok','alert-fail','alert-warn'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display='none'; });
+}
+function showAlert(type, msg) {
+  hideAlerts();
+  const el = document.getElementById('alert-'+type); if (!el) return;
+  el.textContent = msg; el.style.display = 'block';
+  setTimeout(() => el.style.display = 'none', 4000);
+}
+</script>
+</body>
+</html>
